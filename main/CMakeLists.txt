@@ -1,2 +1,2 @@
-idf_component_register(SRCS "Task.c" "Task_v1.c"
+idf_component_register(SRCS "Task.c"
                     INCLUDE_DIRS ".")

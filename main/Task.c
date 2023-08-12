@@ -38,12 +38,10 @@ void Sendvalue(void *pvParameter){
         printf("vol 2: %lu \n", voltage2);
         printf("Vol 3: %lu \n", voltage3);
              
-       // i = (i > 3) ? 1 : i;
         caseVol[1] = (voltage1 > 2500) ? 1 : 0;
         caseVol[2] = (voltage2 > 2500) ? 2 : 0;
         caseVol[3] = (voltage3 > 2500) ? 3 : 0;
-       // VarHandle = caseVol[i];
-        //i++;
+
         for(int i = 1; i < 4; i++){
             if(caseVol[i] > 0){
                 VarHandle = caseVol[i];
@@ -63,19 +61,27 @@ void RecieValue(void *pvParameter){
     BaseType_t xStatus;
     const TickType_t xTickToWaite= pdMS_TO_TICKS(100);
 
+    void ControlPotencia(int mosfet1, int mosfet2, int relay, int LedGreen, int LedRed){
+        gpio_set_level(GPIO_NUM_17, mosfet1);
+        gpio_set_level(GPIO_NUM_16, mosfet2);
+        gpio_set_level(GPIO_NUM_4, relay);
+        //Leds 
+        gpio_set_level(GPIO_NUM_19, LedGreen);
+        gpio_set_level(GPIO_NUM_18, LedRed);
+        
+    }
+
     while(1) {
         xStatus = xQueueReceive(xQueue, &ReceiV, xTickToWaite);
         if(xStatus != errQUEUE_FULL){
-        printf("status: %lu \n", ReceiV);
-        if(ReceiV > 0 ){
-            gpio_set_level(GPIO_NUM_19, 1);
-            gpio_set_level(GPIO_NUM_18, 0);
-        }
-        else{
-            gpio_set_level(GPIO_NUM_19, 0);
-            gpio_set_level(GPIO_NUM_18, 1);
-        }
-            vTaskDelay(pdMS_TO_TICKS(100));
+            printf("status: %lu \n", ReceiV);
+            if(ReceiV > 0 ){    
+                ControlPotencia(0, 0, 0, 1, 0);
+            }
+            else{
+                ControlPotencia(1, 1, 1, 0, 1);
+            }
+                vTaskDelay(pdMS_TO_TICKS(100));
         } 
         else{
             printf("no se pudo recivir el queue");
@@ -94,6 +100,9 @@ void app_main(){
 
     gpio_set_direction(GPIO_NUM_19, GPIO_MODE_OUTPUT);
     gpio_set_direction(GPIO_NUM_18, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GPIO_NUM_16, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
 
     xQueue = xQueueCreate(3, sizeof(int32_t)); //Creat the Queue
     if(xQueue != NULL){
