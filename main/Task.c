@@ -24,11 +24,15 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 
-#define LED_GREEN   GPIO_NUM_19
-#define LED_RED     GPIO_NUM_18
-#define MOSFET_1    GPIO_NUM_17
-#define MOSFET_2    GPIO_NUM_16
-#define RELAY       GPIO_NUM_4
+#define LED_GREEN       GPIO_NUM_19
+#define LED_RED         GPIO_NUM_18
+#define MOSFET_1        GPIO_NUM_17
+#define MOSFET_2        GPIO_NUM_16
+#define RELAY           GPIO_NUM_4
+#define CAR_ON          GPIO_NUM_0
+#define BATTERY         ADC_CHANNEL_7
+#define VOLT_OUT        ADC_CHANNEL_6
+#define CURRENT_OUT     ADC_CHANNEL_4
 
 
 
@@ -101,7 +105,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 void Task1(void *pvParameter){
 //Protocolo mqtt start here
-
+int VoltageBattery;
+int CurrentOut;
+char buff_volt[20];
+char buff_current[20];
 
 esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = "mqtt://test.mosquitto.org",
@@ -112,17 +119,19 @@ esp_mqtt_client_config_t mqtt_cfg = {
     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
+    //protocolo mqtt end here
     while(1){
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        esp_mqtt_client_publish(client, "/topic/qos1", "hola, funciono", 0, 1, 0);
+	    VoltageBattery = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
+	    CurrentOut = esp_adc_cal_raw_to_voltage(adc1_get_raw(CURRENT_OUT), &adc1_chars);
+        vTaskDelay(pdMS_TO_TICKS(100));
 
-    }
+        sprintf(buff_volt, "%d", VoltageBattery);
+        sprintf(buff_current, "%d", CurrentOut);
 
-    //protocolo installetion end herer
-
-//protocolo mqtt end here
+        esp_mqtt_client_publish(client, "/topic/qos1", "buff_volt", 0, 1, 0);
+        esp_mqtt_client_publish(client, "/topic/qos1", "buff_current", 0, 1, 0);
+    } 
 }
-
 //Function that send the data
 void Sendvalue(void *pvParameter){
 
@@ -137,24 +146,18 @@ void Sendvalue(void *pvParameter){
         
     }
 
- 
-    
-
-    BaseType_t xStatus;
+    int coditional = 1; //this value will be 0 in overcurrent
     int caseVol[3];
     int VarHandle;
     int voltage1;
     int voltage2;
     int voltage3;
 
-    //int i = 1;
-       
-    VarHandle = (int32_t)pvParameter;
 	while(1){
 
-	    voltage1 = esp_adc_cal_raw_to_voltage(adc1_get_raw(ADC1_CHANNEL_6), &adc1_chars);
-        voltage2 = esp_adc_cal_raw_to_voltage(adc1_get_raw(ADC1_CHANNEL_7), &adc1_chars);
-        voltage3 = esp_adc_cal_raw_to_voltage(adc1_get_raw(ADC1_CHANNEL_4), &adc1_chars);
+	    voltage1 = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
+        voltage2 = esp_adc_cal_raw_to_voltage(adc1_get_raw(VOLT_OUT), &adc1_chars);
+        voltage3 = esp_adc_cal_raw_to_voltage(adc1_get_raw(CURRENT_OUT), &adc1_chars);
 
         printf("Volt 1: %d \n", voltage1);
         printf("vol 2: %d \n", voltage2);
@@ -172,20 +175,17 @@ void Sendvalue(void *pvParameter){
 
         VarHandle = (VarHandle > 0) ? VarHandle : 0;
 
-            if(VarHandle > 0 ){    
-                ControlPotencia(0, 0, 0, 1, 0);
-                vTaskDelay(pdMS_TO_TICKS(10 * 1000));
+            if(VarHandle < 0 && coditional){    
+                ControlPotencia(1, 1, 1, 0, 1);
             }
             else{
-                ControlPotencia(1, 1, 1, 0, 1);
-                    //esp_mqtt_client_publish(pvParameter, "/topic/qos1", "hola mundo", 0, 1, 0);   
-                vTaskDelay(pdMS_TO_TICKS(5 * 1000));
+                coditional = 0;
+                ControlPotencia(0, 0, 0, 1, 0);
             }
-    } 
-        
-        
+    }      
 }
 
+int VoltageBattery;
 
 void app_main(){
     //protocolo installetion start herer
@@ -211,8 +211,6 @@ void app_main(){
      */
     ESP_ERROR_CHECK(example_connect());
 
-    
-    
     //adc config star here
     esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_DEFAULT, 0, &adc1_chars);
 
@@ -229,10 +227,17 @@ void app_main(){
     gpio_set_direction(MOSFET_1, GPIO_MODE_OUTPUT);
     gpio_set_direction(MOSFET_2, GPIO_MODE_OUTPUT);
     gpio_set_direction(RELAY, GPIO_MODE_OUTPUT);
+    gpio_set_direction(CAR_ON, GPIO_MODE_INPUT);
+
+	VoltageBattery = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
+
     //gpio config end here
-
-    xTaskCreate(&Task1, "Task1", 2048, NULL, 1, NULL);
-    xTaskCreate(&Sendvalue, "Sendvalue", 2048, NULL, 1, NULL);
-    //xTaskCreate(&RecieValue, "RecieValue", 2048, NULL, 2,NULL );
-
+    if((VoltageBattery > 1800) && (gpio_get_level(CAR_ON))){
+        xTaskCreate(&Task1, "Task1", 2048, NULL, 1, NULL);
+        xTaskCreate(&Sendvalue, "Sendvalue", 2048, NULL, 1, NULL);
+    }else{
+        //if the battery is down than 1800 then led red will turn on
+        gpio_set_level(LED_RED, 1);
+ 
+    }
 }
