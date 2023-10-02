@@ -65,16 +65,16 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         msg_id = esp_mqtt_client_subscribe(client, "/topic/qos1", 0);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
-        msg_id = esp_mqtt_client_publish(client, "/topic/qos1", "data_3", 0, 1, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+        //msg_id = esp_mqtt_client_publish(client, "/topic/qos1", "data_3", 0, 1, 0);
+        //ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
         break;
 
     case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-        msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+        //msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
+        //ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
@@ -105,10 +105,16 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 void Task1(void *pvParameter){
 //Protocolo mqtt start here
-int VoltageBattery;
+int VoltageBatteryIn;
+int VoltageBatteryOut;
+int VoltageBatteryMediaIn = 0;
+int VoltageBatteryMediaOut = 0;
 int CurrentOut;
+int CurrentOutMedia = 0;
+int counter = 0;
 char buff_volt[20];
 char buff_current[20];
+
 
 esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = "mqtt://test.mosquitto.org",
@@ -121,15 +127,31 @@ esp_mqtt_client_config_t mqtt_cfg = {
     esp_mqtt_client_start(client);
     //protocolo mqtt end here
     while(1){
-	    VoltageBattery = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
-	    CurrentOut = esp_adc_cal_raw_to_voltage(adc1_get_raw(CURRENT_OUT), &adc1_chars);
-        vTaskDelay(pdMS_TO_TICKS(100));
+	    //Here it will take place the calculation of voltage mean and current mean 
+        //We take 100 evidences.
+        if(counter == 1000){
+            VoltageBatteryMediaIn = VoltageBatteryMediaIn / 1000;
+            VoltageBatteryMediaOut = VoltageBatteryMediaOut / 1000;
+            CurrentOutMedia = CurrentOutMedia / 1000;
+            sprintf(buff_volt, "%d", VoltageBatteryMediaIn);
+            sprintf(buff_volt, "%d", VoltageBatteryMediaOut);
+            sprintf(buff_current, "%d", CurrentOutMedia);
 
-        sprintf(buff_volt, "%d", VoltageBattery);
-        sprintf(buff_current, "%d", CurrentOut);
-
-        esp_mqtt_client_publish(client, "/topic/qos1", "buff_volt", 0, 1, 0);
-        esp_mqtt_client_publish(client, "/topic/qos1", "buff_current", 0, 1, 0);
+            esp_mqtt_client_publish(client, "/topic/qos1", buff_volt, 0, 1, 0);
+            esp_mqtt_client_publish(client, "/topic/qos2", buff_current, 0, 1, 0);
+            esp_mqtt_client_publish(client, "/topic/qos3", buff_current, 0, 1, 0);
+            vTaskDelay(pdMS_TO_TICKS(800));
+            counter = 0;
+        }
+        else{
+            VoltageBatteryIn = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
+            VoltageBatteryOut = esp_adc_cal_raw_to_voltage(adc1_get_raw(VOLT_OUT), &adc1_chars);
+	        CurrentOut = esp_adc_cal_raw_to_voltage(adc1_get_raw(CURRENT_OUT), &adc1_chars);
+            VoltageBatteryMediaIn = VoltageBatteryMediaIn + VoltageBatteryIn;
+            VoltageBatteryMediaOut = VoltageBatteryMediaOut + VoltageBatteryOut;
+            CurrentOutMedia = CurrentOutMedia + CurrentOut;
+            counter++;
+        }
     } 
 }
 //Function that send the data
@@ -159,9 +181,9 @@ void Sendvalue(void *pvParameter){
         voltage2 = esp_adc_cal_raw_to_voltage(adc1_get_raw(VOLT_OUT), &adc1_chars);
         voltage3 = esp_adc_cal_raw_to_voltage(adc1_get_raw(CURRENT_OUT), &adc1_chars);
 
-        printf("Volt 1: %d \n", voltage1);
-        printf("vol 2: %d \n", voltage2);
-        printf("Vol 3: %d \n", voltage3);
+        //printf("Volt 1: %d \n", voltage1);
+        //printf("vol 2: %d \n", voltage2);
+        //printf("Vol 3: %d \n", voltage3);
              
         caseVol[1] = (voltage1 > 2500) ? 1 : 0;
         caseVol[2] = (voltage2 > 2500) ? 2 : 0;
@@ -174,8 +196,9 @@ void Sendvalue(void *pvParameter){
         }
 
         VarHandle = (VarHandle > 0) ? VarHandle : 0;
+        printf("var handle : %d and conditionn : %d \n", VarHandle, coditional);
 
-            if(VarHandle < 0 && coditional){    
+            if((VarHandle == 0) && coditional){    
                 ControlPotencia(1, 1, 1, 0, 1);
             }
             else{
@@ -232,12 +255,14 @@ void app_main(){
 	VoltageBattery = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
 
     //gpio config end here
-    if((VoltageBattery > 1800) && (gpio_get_level(CAR_ON))){
+    if((VoltageBattery > 1000) && (gpio_get_level(CAR_ON))){
         xTaskCreate(&Task1, "Task1", 2048, NULL, 1, NULL);
         xTaskCreate(&Sendvalue, "Sendvalue", 2048, NULL, 1, NULL);
     }else{
         //if the battery is down than 1800 then led red will turn on
         gpio_set_level(LED_RED, 1);
+        VoltageBattery = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
+        printf("El carro esta apagado, el voltaje de la bateria es %d", VoltageBattery);
  
     }
 }
