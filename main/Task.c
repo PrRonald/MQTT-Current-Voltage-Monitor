@@ -180,10 +180,6 @@ void Sendvalue(void *pvParameter){
 	    voltage1 = esp_adc_cal_raw_to_voltage(adc1_get_raw(BATTERY), &adc1_chars);
         voltage2 = esp_adc_cal_raw_to_voltage(adc1_get_raw(VOLT_OUT), &adc1_chars);
         voltage3 = esp_adc_cal_raw_to_voltage(adc1_get_raw(CURRENT_OUT), &adc1_chars);
-
-        //printf("Volt 1: %d \n", voltage1);
-        //printf("vol 2: %d \n", voltage2);
-        //printf("Vol 3: %d \n", voltage3);
              
         caseVol[1] = (voltage1 > 2500) ? 1 : 0;
         caseVol[2] = (voltage2 > 2500) ? 2 : 0;
@@ -228,10 +224,7 @@ void app_main(){
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
+    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.*/
     ESP_ERROR_CHECK(example_connect());
 
     //adc config star here
