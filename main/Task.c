@@ -192,8 +192,6 @@ void Sendvalue(void *pvParameter){
         }
 
         VarHandle = (VarHandle > 0) ? VarHandle : 0;
-        printf("var handle : %d and conditionn : %d \n", VarHandle, coditional);
-
             if((VarHandle == 0) && coditional){    
                 ControlPotencia(1, 1, 1, 0, 1);
             }
